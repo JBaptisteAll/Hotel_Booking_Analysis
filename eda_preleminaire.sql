@@ -336,5 +336,6 @@ city_hotel      79330	0	0.00	5400.00	105,3	99,9	43,6
 resort_hotel    40060	0	-6.38	508.00	94,95	75	    61,44
 
 Médianne et moyenne plutôt proche
-verifier les minimum négatif sur le resort_hotel, et les Zéro également
+verifier les minimum négatif sur le resort_hotel, et les Zéro également.
+Vérifier le max 5400 city_hotel (Outlier)
 */

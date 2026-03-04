@@ -30,7 +30,10 @@ flowchart LR
   A[hotel_bookings.csv\n119 390 rows] --> B[01_schema_and_load.sql\nDDL + ETL]
   B --> C[resort_hotel]
   B --> D[city_hotel]
-  C --> E[Analysis Layer]
+  C --> F[all_hotel VIEW]
+  D --> F
+  F --> E[Analysis Layer]
+  C --> E
   D --> E
 ```
 
@@ -62,9 +65,10 @@ Both hotels are located in **Portugal**:
 │
 ├── docs/
 │   ├── data_dictionary.md              # Column-level definitions for all tables
-│   └── data_catalogue.md               # Inventory of all tables, sources, and lineage
+│   └── data_catalogue.md               # Inventory of all tables, sources, lineage, and EDA findings
 │
 ├── 01_schema_and_load.sql              # DDL (CREATE TABLE, constraints) + ETL (INSERT INTO SELECT)
+├── eda_preleminaire.sql                # Exploratory Data Analysis — distributions, stats, hypotheses
 │
 └── README.md                           # Technical documentation (this file)
 ```
@@ -140,6 +144,37 @@ The raw table is split into two validated, typed tables — one per hotel. Both 
 - Guest origin distribution (country-level mapping).
 - Booking channel performance (market segment × distribution channel).
 - Special requests and parking demand as proxy for guest profile.
+
+### 6.4 EDA — Key Findings & Hypotheses (2026-03-04)
+
+Preliminary EDA (`eda_preleminaire.sql`) confirmed the following facts and generated the first set of testable hypotheses.
+
+**Confirmed facts:**
+
+| Metric | City Hotel | Resort Hotel |
+|---|---|---|
+| Rows | 79 330 | 40 060 |
+| No-Deposit share | 83.8 % | 95.4 % |
+| Cancellation rate | 40.6 % | 27.0 % |
+| No-Show rate | 1.2 % | 0.7 % |
+| Lead time — mean / median | 109.74 / 74 days | 92.68 / 57 days |
+| ADR — mean / median | 105.30 / 99.90 € | 94.95 / 75.00 € |
+| ADR — min | 0.00 € | **-6.38 €** |
+
+**Data quality flags from EDA:**
+- `resort_hotel.average_daily_rate` contains negative values (min = -6.38) — likely billing corrections.
+- `city_hotel.average_daily_rate` contains zero values and a max of 5 400 € — outliers to investigate.
+
+**Initial hypotheses:**
+
+| # | Hypothesis | Next step |
+|---|---|---|
+| H1 | No-Shows are almost exclusively "No Deposit" bookings | Cross-tab `reservation_status` × `deposit_type` |
+| H2 | "Non Refund" deposit significantly reduces cancellation rate | Cancellation rate by `deposit_type` |
+| H3 | High-modification bookings (many `nb_of_changes_into_the_booking`) are more likely to cancel | Cancellation rate by change count bucket |
+| H4 | High special-request count correlates with high modification count | `nb_of_special_requests` × `nb_of_changes_into_the_booking` |
+| H5 | Negative ADR rows in `resort_hotel` are corrections — to be excluded from revenue analysis | `WHERE average_daily_rate < 0` investigation |
+| H6 | Zero ADR rows represent complimentary stays or data errors | `WHERE average_daily_rate = 0` investigation |
 
 ---
 

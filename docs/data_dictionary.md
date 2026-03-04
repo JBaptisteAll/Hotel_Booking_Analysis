@@ -85,6 +85,27 @@ Both tables share the same structure. They are populated from `hotel_bookings` v
 
 ---
 
+---
+
+## View: `all_hotel`
+
+Created by `eda_preleminaire.sql`. A convenience view that combines both typed tables.
+
+```sql
+CREATE VIEW all_hotel AS
+    SELECT * FROM city_hotel
+    UNION ALL
+    SELECT * FROM resort_hotel;
+```
+
+| Attribute | Value |
+|---|---|
+| Columns | Same 30 columns as `city_hotel` / `resort_hotel` |
+| Rows | 119 390 (79 330 + 40 060) |
+| Use | Cross-hotel queries and global aggregations |
+
+---
+
 ## Meal Plan Codes
 
 | Code | Description |
@@ -98,3 +119,20 @@ Both tables share the same structure. They are populated from `hotel_bookings` v
 ## Room Type Codes
 
 Room types are anonymized letter codes (`A` through `L`). `A` is the most common room type. Comparing `reserved_room_type` vs. `assigned_romm_type` indicates upgrades (assigned > reserved) or downgrades (assigned < reserved).
+
+---
+
+## EDA-Derived Column Notes
+
+Populated during preliminary EDA (`eda_preleminaire.sql`, 2026-03-04). Confirmed across both tables — no NULLs on any numeric column listed below.
+
+| Column | Table | Min | Max | Mean | Median | Std | Notes |
+|---|---|---|---|---|---|---|---|
+| `lead_time_in_days` | city_hotel | 0 | 629 | 109.74 | 74 | 110.95 | High std relative to mean — right-skewed distribution |
+| `lead_time_in_days` | resort_hotel | 0 | 737 | 92.68 | 57 | 97.29 | Same pattern — leisure bookings may plan further ahead |
+| `nb_of_changes_into_the_booking` | city_hotel | 0 | 21 | 0.19 | 0 | 0.61 | Most bookings have 0 changes; high-change outliers to profile |
+| `nb_of_changes_into_the_booking` | resort_hotel | 0 | 17 | 0.29 | 0 | 0.73 | Same pattern |
+| `nb_of_special_requests` | city_hotel | 0 | 5 | ~0 | 0 | — | Low overall; potential signal for guest engagement |
+| `nb_of_special_requests` | resort_hotel | 0 | 5 | ~0 | 0 | — | Same pattern |
+| `average_daily_rate` | city_hotel | 0.00 | 5 400.00 | 105.30 | 99.90 | 43.60 | Max of 5 400 is a likely outlier — to investigate |
+| `average_daily_rate` | resort_hotel | **-6.38** | 508.00 | 94.95 | 75.00 | 61.44 | **Negative minimum** — billing correction suspected; to filter at analysis layer |
