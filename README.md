@@ -145,11 +145,11 @@ The raw table is split into two validated, typed tables — one per hotel. Both 
 - Booking channel performance (market segment × distribution channel).
 - Special requests and parking demand as proxy for guest profile.
 
-### 6.4 EDA — Key Findings & Hypotheses (2026-03-04)
+### 6.4 EDA — Key Findings & Hypotheses
 
-Preliminary EDA (`eda_preleminaire.sql`) confirmed the following facts and generated the first set of testable hypotheses.
+Preliminary EDA (`eda_preleminaire.sql`) confirmed the following facts and generated a first set of testable hypotheses. Cross-dimension analysis then confirmed or revised several of them.
 
-**Confirmed facts:**
+#### Univariate — confirmed facts
 
 | Metric | City Hotel | Resort Hotel |
 |---|---|---|
@@ -158,23 +158,61 @@ Preliminary EDA (`eda_preleminaire.sql`) confirmed the following facts and gener
 | Cancellation rate | 40.6 % | 27.0 % |
 | No-Show rate | 1.2 % | 0.7 % |
 | Lead time — mean / median | 109.74 / 74 days | 92.68 / 57 days |
+| Lead time — std dev | 110.95 days | 97.29 days |
+| Booking changes — mean / max | 0.19 / 21 | 0.29 / 17 |
 | ADR — mean / median | 105.30 / 99.90 € | 94.95 / 75.00 € |
 | ADR — min | 0.00 € | **-6.38 €** |
+| ADR — max | **5 400.00 €** | 508.00 € |
 
-**Data quality flags from EDA:**
+**Data quality flags:**
 - `resort_hotel.average_daily_rate` contains negative values (min = -6.38) — likely billing corrections.
 - `city_hotel.average_daily_rate` contains zero values and a max of 5 400 € — outliers to investigate.
+- Booking changes: mean ≈ 0 but max = 17–21, indicating a tail of highly-modified reservations.
 
-**Initial hypotheses:**
+#### Cross-dimension analysis — deposit_type × customer_type
 
-| # | Hypothesis | Next step |
+| deposit_type | customer_type | City Hotel nb | Resort Hotel nb |
+|---|---|---|---|
+| No Deposit | Transient | 48 101 | 28 583 |
+| No Deposit | Transient-Party | 16 288 | 7 570 |
+| No Deposit | Contract | 1 760 | 1 770 |
+| Non Refund | Transient | 11 290 | 1 619 |
+| Non Refund | Transient-Party | 1 038 | 96 |
+| Refundable | (all types) | ~20 | ~142 |
+
+"No Deposit" bookings are dominant across all customer types and drive the majority of revenue on both hotels.
+
+#### Cross-dimension analysis — deposit_type × reservation_status
+
+| deposit_type | reservation_status | City Hotel | Resort Hotel |
+|---|---|---|---|
+| No Deposit | Check-Out | 46 198 | 28 749 |
+| No Deposit | Canceled | 19 344 | 9 178 |
+| No Deposit | No-Show | 900 | 272 |
+| Non Refund | Canceled | **12 828** | **1 632** |
+| Non Refund | Check-Out | 24 | 69 |
+| Non Refund | No-Show | 16 | 18 |
+| Refundable | Check-Out | 6 | 120 |
+| Refundable | Canceled | 14 | 21 |
+
+**Key observations:**
+- "Non Refund" bookings cancel at ~99.8 % rate on city_hotel and ~95.5 % on resort_hotel — counterintuitive and requires investigation (possible revenue recognition or retroactive classification).
+- No-Show events are overwhelmingly concentrated in "No Deposit" bookings, confirming H1.
+- "Refundable" bookings are nearly absent on city_hotel, suggesting business-travel guests accept uncertainty rather than paying a refundable premium.
+- Resort hotel could potentially benefit from revised Non-Refund deposit conditions.
+
+#### Hypotheses
+
+| # | Hypothesis | Status |
 |---|---|---|
-| H1 | No-Shows are almost exclusively "No Deposit" bookings | Cross-tab `reservation_status` × `deposit_type` |
-| H2 | "Non Refund" deposit significantly reduces cancellation rate | Cancellation rate by `deposit_type` |
-| H3 | High-modification bookings (many `nb_of_changes_into_the_booking`) are more likely to cancel | Cancellation rate by change count bucket |
-| H4 | High special-request count correlates with high modification count | `nb_of_special_requests` × `nb_of_changes_into_the_booking` |
-| H5 | Negative ADR rows in `resort_hotel` are corrections — to be excluded from revenue analysis | `WHERE average_daily_rate < 0` investigation |
-| H6 | Zero ADR rows represent complimentary stays or data errors | `WHERE average_daily_rate = 0` investigation |
+| H1 | No-Shows are almost exclusively "No Deposit" bookings | **Confirmed** — 900 / 916 city, 272 / 291 resort |
+| H2 | "Non Refund" deposit reduces cancellation rate | **Revised** — Non Refund shows ~99 % cancellation; mechanism to investigate |
+| H3 | High-modification bookings are more likely to cancel | Open — next step: cancellation rate by change count bucket |
+| H4 | High special-request count correlates with high modification count | Open — next step: `nb_of_special_requests` × `nb_of_changes_into_the_booking` |
+| H5 | Negative ADR rows in `resort_hotel` are billing corrections | Open — `WHERE average_daily_rate < 0` investigation |
+| H6 | Zero ADR rows represent complimentary stays or data errors | Open — `WHERE average_daily_rate = 0` investigation |
+| H7 | Non Refund classification may be retroactive (post-cancellation) rather than predictive | New — requires checking `reservation_status_date` vs `arrival_date` |
+| H8 | City hotel cancellation rate higher than resort due to business-travel flexibility | New — cross-tab `hotel × market_segment × is_canceled` |
 
 ---
 
