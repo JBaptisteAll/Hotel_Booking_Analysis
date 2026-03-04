@@ -339,3 +339,134 @@ Médianne et moyenne plutôt proche
 verifier les minimum négatif sur le resort_hotel, et les Zéro également.
 Vérifier le max 5400 city_hotel (Outlier)
 */
+
+
+-- VERIFICATION COLONNE DATES
+
+-- Volume et montant par mois, trié chronologiquement
+SELECT
+FORMAT(arrival_date, 'yyyy-MM') AS mois,
+COUNT(*) AS nb_lignes,
+SUM(adults) AS total_of_guest,
+SUM(nb_of_week_nights) AS total_days_week,
+SUM(nb_of_weekend_nights) AS total_days_weekend,
+SUM(nb_of_week_nights + nb_of_weekend_nights) AS total_days,
+SUM(average_daily_rate) AS total
+FROM city_hotel
+GROUP BY FORMAT(arrival_date, 'yyyy-MM')
+ORDER BY mois;
+--
+SELECT
+FORMAT(arrival_date, 'yyyy-MM') AS mois,
+COUNT(*) AS nb_lignes,
+SUM(adults) AS total_of_guest,
+SUM(nb_of_week_nights) AS total_days_week,
+SUM(nb_of_weekend_nights) AS total_days_weekend,
+SUM(nb_of_week_nights + nb_of_weekend_nights) AS total_days,
+SUM(average_daily_rate) AS total
+FROM resort_hotel
+GROUP BY FORMAT(arrival_date, 'yyyy-MM')
+ORDER BY mois;
+
+/*
+A voir pour en créer une VIEW, et l'utilisé pour un dashboard de direction
+pour monitorer la performance de chaque hotel.
+*/
+
+
+
+-- CROISEMENT DE 2 DIMENSIONS
+
+-- Tableau croisé : catégorie 1 × catégorie 2
+SELECT
+deposit_type,
+customer_type,
+COUNT(*) AS nb,
+SUM(average_daily_rate) AS total
+FROM city_hotel
+GROUP BY deposit_type, customer_type
+ORDER BY deposit_type, total DESC;
+--
+SELECT
+deposit_type,
+customer_type,
+COUNT(*) AS nb,
+SUM(average_daily_rate) AS total
+FROM resort_hotel
+GROUP BY deposit_type, customer_type
+ORDER BY deposit_type, total DESC;
+/*
+city_hotel
+No Deposit	Transient	48101	5452163.77
+No Deposit	Transient-Party	16288	1491088.09
+No Deposit	Contract	1760	182846.38
+No Deposit	Group	293	26940.30
+Non Refund	Transient	11290	1081516.47
+Non Refund	Transient-Party	1038	83468.68
+Non Refund	Contract	540	33480.00
+Refundable	Transient	13	1752.30
+Refundable	Transient-Party	7	547.25
+
+resort_hotel
+No Deposit	Transient	28583	2946170.94
+No Deposit	Transient-Party	7570	572864.93
+No Deposit	Contract	1770	140225.48
+No Deposit	Group	276	20666.61
+Non Refund	Transient	1619	107110.92
+Non Refund	Transient-Party	96	6585.05
+Non Refund	Contract	4	144.00
+Refundable	Transient-Party	125	8226.78
+Refundable	Transient	7	1097.19
+Refundable	Group	8	566.00
+Refundable	Contract	2	156.46
+
+Le "No Deposit" est largement majoritaire et génére beaucoup de revenue
+*/
+
+SELECT
+deposit_type,
+reservation_status,
+COUNT(*) AS nb,
+SUM(average_daily_rate) AS total
+FROM city_hotel
+GROUP BY deposit_type, reservation_status
+ORDER BY deposit_type, total DESC;
+--
+SELECT
+deposit_type,
+reservation_status,
+COUNT(*) AS nb,
+SUM(average_daily_rate) AS total
+FROM resort_hotel
+GROUP BY deposit_type, reservation_status
+ORDER BY deposit_type, total DESC;
+/*
+city_hotel
+No Deposit	Check-Out	46198	4885560.77
+No Deposit	Canceled	19344	2176080.17
+No Deposit	No-Show	900	91397.60
+Non Refund	Canceled	12828	1194486.47
+Non Refund	Check-Out	24	2394.68
+Non Refund	No-Show	16	1584.00
+Refundable	Canceled	14	1831.30
+Refundable	Check-Out	6	468.25
+
+resort_hotel
+No Deposit	Check-Out	28749	2614251.30
+No Deposit	Canceled	9178	1043512.46
+No Deposit	No-Show	272	22164.20
+Non Refund	Canceled	1632	107884.82
+Non Refund	Check-Out	69	4820.15
+Non Refund	No-Show	18	1135.00
+Refundable	Check-Out	120	8179.78
+Refundable	Canceled	21	1818.65
+Refundable	No-Show	1	48.00
+
+Le resultat est très interessant. surtotu sur le city_hotel avec un nombre 
+résa Cancelled et No-Show énorme en terme de %, voir si ce sont des groupes
+Le nombre de résa en "Refundable" sont presque inéxistante sur city_hotel
+suggérant une incertitude des clients, probablement dû à la raison de leur
+venu (travail???)
+Le resort_hotel pourrai au contraire bénéficier d'un changement de 
+conditions sur le NonRefundable Deposit
+*/
