@@ -9,8 +9,9 @@ This document inventories all data assets in the project: their origin, format, 
 | Asset | Type | Format | Location | Status | Rows |
 |---|---|---|---|---|---|
 | `hotel_bookings` | Raw source table | SQL Server table (from CSV) | SQL Server DB | Active | 119 390 |
-| `resort_hotel` | Typed analytical table | SQL Server table | SQL Server DB | Active | ~40 060 |
-| `city_hotel` | Typed analytical table | SQL Server table | SQL Server DB | Active | ~79 330 |
+| `resort_hotel` | Typed analytical table | SQL Server table | SQL Server DB | Active | 40 060 |
+| `city_hotel` | Typed analytical table | SQL Server table | SQL Server DB | Active | 79 330 |
+| `all_hotel` | Analytical VIEW | SQL Server VIEW | SQL Server DB | Active | 119 390 |
 
 ---
 
@@ -89,8 +90,14 @@ hotel_bookings.csv
 hotel_bookings  (raw SQL Server table — full import)
         │
         ├──── resort_hotel  (DDL + ETL via 01_schema_and_load.sql, WHERE hotel = 'Resort Hotel')
-        │
+        │         │
+        │         └──┐
+        │            ▼
         └──── city_hotel    (DDL + ETL via 01_schema_and_load.sql, WHERE hotel = 'City Hotel')
+                  │
+                  └──┐
+                     ▼
+               all_hotel  (VIEW — UNION ALL of resort_hotel + city_hotel, via eda_preleminaire.sql)
 ```
 
 ---
@@ -100,6 +107,7 @@ hotel_bookings  (raw SQL Server table — full import)
 | Script | Role | Tables affected |
 |---|---|---|
 | `01_schema_and_load.sql` | Creates `resort_hotel` and `city_hotel`, applies CHECK constraints, inserts data from `hotel_bookings` | `resort_hotel`, `city_hotel` |
+| `eda_preleminaire.sql` | Exploratory Data Analysis — row counts, period, duplicate check, categorical distributions, numeric stats | `city_hotel`, `resort_hotel`, VIEW `all_hotel` |
 
 ---
 
@@ -114,3 +122,65 @@ hotel_bookings  (raw SQL Server table — full import)
 | `hotel_bookings` | `adr` | Some values are 0 or negative | Not filtered — to be handled at analysis layer |
 | `hotel_bookings` | `adults` | Some rows have `adults = 0` | Not filtered at load — to be handled at analysis layer |
 | `city_hotel` | `booking_id` | Starts at 850 instead of 0 due to a failed INSERT consuming identity values | Cosmetic only — `booking_id` is a surrogate key, not a business identifier |
+| `resort_hotel` | `average_daily_rate` | Minimum value is -6.38 (negative ADR) — likely a billing correction entry | Flagged during EDA — to be investigated and filtered at analysis layer |
+
+---
+
+## 7. EDA Findings & Initial Hypotheses
+
+Produced by `eda_preleminaire.sql` (2026-03-04).
+
+### 7.1 Confirmed Row Counts & Period
+
+| Table | Rows | Period |
+|---|---|---|
+| `city_hotel` | 79 330 | To be confirmed by query |
+| `resort_hotel` | 40 060 | To be confirmed by query |
+
+No duplicate `booking_id` values detected in either table.
+
+### 7.2 Categorical Distributions (key columns)
+
+#### `deposit_type`
+
+| Value | city_hotel | resort_hotel |
+|---|---|---|
+| No Deposit | 83.8 % | 95.4 % |
+| Non Refund | 16.2 % | 4.3 % |
+| Refundable | 0.0 % | 0.4 % |
+
+**Observation:** The vast majority of bookings carry no deposit — especially at the Resort Hotel. This makes the financial exposure from cancellations significant.
+
+#### `reservation_status`
+
+| Value | city_hotel | resort_hotel |
+|---|---|---|
+| Check-Out | 58.3 % | 72.2 % |
+| Canceled | 40.6 % | 27.0 % |
+| No-Show | 1.2 % | 0.7 % |
+
+**Observation:** The City Hotel has a strikingly high cancellation rate (40.6 %) compared to the Resort Hotel (27.0 %).
+
+### 7.3 Numeric Column Stats
+
+| Column | Table | Min | Max | Mean | Median | Std | NULLs |
+|---|---|---|---|---|---|---|---|
+| `lead_time_in_days` | city_hotel | 0 | 629 | 109.74 | 74 | 110.95 | 0 |
+| `lead_time_in_days` | resort_hotel | 0 | 737 | 92.68 | 57 | 97.29 | 0 |
+| `nb_of_changes_into_the_booking` | city_hotel | 0 | 21 | 0.19 | 0 | 0.61 | 0 |
+| `nb_of_changes_into_the_booking` | resort_hotel | 0 | 17 | 0.29 | 0 | 0.73 | 0 |
+| `nb_of_special_requests` | city_hotel | 0 | 5 | ~0 | 0 | — | 0 |
+| `nb_of_special_requests` | resort_hotel | 0 | 5 | ~0 | 0 | — | 0 |
+| `average_daily_rate` | city_hotel | 0.00 | 5 400.00 | 105.30 | 99.90 | 43.60 | 0 |
+| `average_daily_rate` | resort_hotel | **-6.38** | 508.00 | 94.95 | 75.00 | 61.44 | 0 |
+
+### 7.4 Initial Hypotheses
+
+| # | Hypothesis | Supporting observation | Next step |
+|---|---|---|---|
+| H1 | No-Show bookings are almost exclusively "No Deposit" | No-Show rate is small (1.2 % / 0.7 %) and correlates structurally with lack of financial commitment | Cross-tab `reservation_status` × `deposit_type` |
+| H2 | "Non Refund" deposit strongly reduces cancellation rate | Only 16.2 % of city_hotel bookings are Non Refund yet they may account for a disproportionally low share of cancellations | Cancellation rate by `deposit_type` |
+| H3 | Bookings with many modifications are more likely to cancel | Mean changes ≈ 0 but max = 21 — high-change bookings are an outlier group worth profiling | Cancellation rate segmented by `nb_of_changes_into_the_booking` buckets |
+| H4 | High number of special requests may correlate with more changes or cancellations | Same pattern: low mean, non-trivial max | Special request count × cancellation rate cross-tab |
+| H5 | Negative ADR records in `resort_hotel` are billing correction entries and should be excluded from revenue analysis | Min ADR = -6.38 on resort_hotel | Investigate rows WHERE `average_daily_rate` < 0 |
+| H6 | Zero ADR bookings are either complimentary stays or data errors | Min ADR = 0.00 on city_hotel | Investigate rows WHERE `average_daily_rate` = 0 |
