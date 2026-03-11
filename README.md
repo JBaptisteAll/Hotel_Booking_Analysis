@@ -61,16 +61,17 @@ Both hotels are located in **Portugal**:
 
 ```
 ├── src/
-│   └── hotel_bookings.csv              # Core raw dataset (119 390 rows, source table)
+│   └── hotel_bookings.csv                          # Core raw dataset (119 390 rows, source table)
 │
 ├── docs/
-│   ├── data_dictionary.md              # Column-level definitions for all tables
-│   └── data_catalogue.md               # Inventory of all tables, sources, lineage, and EDA findings
+│   ├── data_dictionary.md                          # Column-level definitions for all tables
+│   └── data_catalogue.md                           # Inventory of all tables, sources, lineage, and EDA findings
 │
-├── 01_schema_and_load.sql              # DDL (CREATE TABLE, constraints) + ETL (INSERT INTO SELECT)
-├── eda_preleminaire.sql                # Exploratory Data Analysis — distributions, stats, hypotheses
+├── 01_schema_and_load.sql                          # DDL (CREATE TABLE, constraints) + ETL (INSERT INTO SELECT)
+├── 02_eda_exploratory.sql                          # Exploratory Data Analysis — distributions, stats, hypotheses
+├── 03_nettoyage_des_données_city_hotel.sql         # Data cleaning — city_hotel (NULLs, outliers, computed columns)
 │
-└── README.md                           # Technical documentation (this file)
+└── README.md                                       # Technical documentation (this file)
 ```
 
 ---
@@ -96,8 +97,8 @@ The raw table is split into two validated, typed tables — one per hotel. Both 
 | `nb_of_weekend_nights` | `INT` | `stays_in_weekend_nights` | |
 | `nb_of_week_nights` | `INT` | `stays_in_week_nights` | |
 | `adults` | `INT` | `adults` | |
-| `children` | `INT` | `children` | `TRY_CAST` — source contains `'NA'` values |
-| `babies` | `INT` | `babies` | |
+| `children` | `INT` | `children` | `TRY_CAST` — source contains `'NA'` values; 4 NULLs filled with `babies` value |
+| `babies` | `INT` | `babies` | 1 outlier corrected (10 → 1) |
 | `meal` | `VARCHAR(10)` | `meal` | CHECK: FB, HB, SC, BB, Undefined |
 | `country_of_origin` | `VARCHAR(5)` | `country` | ISO 3166-1 alpha-3 |
 | `market_segment` | `VARCHAR(20)` | `market_segment` | |
@@ -106,18 +107,20 @@ The raw table is split into two validated, typed tables — one per hotel. Both 
 | `nb_of_booking_cancelled` | `INT` | `previous_cancellations` | Guest's cancellation history |
 | `nb_of_booking_not_cancelled` | `INT` | `previous_bookings_not_canceled` | |
 | `reserved_room_type` | `VARCHAR(1)` | `reserved_room_type` | Letter code (A–L) |
-| `assigned_romm_type` | `VARCHAR(1)` | `assigned_room_type` | Tracks upgrades / downgrades |
+| `assigned_room_type` | `VARCHAR(1)` | `assigned_room_type` | Tracks upgrades / downgrades — typo corrected from `assigned_romm_type` |
 | `nb_of_changes_into_the_booking` | `INT` | `booking_changes` | Number of modifications before arrival |
 | `deposit_type` | `VARCHAR(10)` | `deposit_type` | CHECK: No Deposit, Refundable, Non Refund |
 | `travel_agency_id` | `INT` | `agent` | `TRY_CAST` — source is VARCHAR with NULLs |
-| `company_id` | `INT` | `company` | `TRY_CAST` — source is VARCHAR with NULLs |
+| ~~`company_id`~~ | ~~`INT`~~ | ~~`company`~~ | **Dropped** — 95 % NULLs (75 641 / 79 330) on city_hotel |
 | `days_in_waiting_list` | `INT` | `days_in_waiting_list` | |
 | `customer_type` | `VARCHAR(20)` | `customer_type` | CHECK constraint enforced |
-| `average_daily_rate` | `DECIMAL(18,2)` | `adr` | Revenue per night in EUR |
+| `average_daily_rate` | `DECIMAL(18,2)` | `adr` | Revenue per night in EUR — 1 outlier corrected (5 400 → 540) |
 | `nb_of_carpark_required` | `INT` | `required_car_parking_spaces` | |
 | `nb_of_special_requests` | `INT` | `total_of_special_requests` | |
 | `reservation_status` | `VARCHAR(15)` | `reservation_status` | CHECK: Check-Out, Canceled, No-Show |
 | `reservation_status_date` | `DATETIME` | `reservation_status_date` | Date of last status change |
+| `nb_total_of_booking` | Computed | `nb_of_booking_cancelled + nb_of_booking_not_cancelled` | Total booking history per guest |
+| `lead_time_segment` | Computed PERSISTED | `lead_time_in_days` | Buckets: Same Day / Last Minute / Short / Medium / Long / X Long / XXL |
 
 ### 5.3 Key Design Decisions
 
@@ -207,12 +210,14 @@ Preliminary EDA (`eda_preleminaire.sql`) confirmed the following facts and gener
 |---|---|---|
 | H1 | No-Shows are almost exclusively "No Deposit" bookings | **Confirmed** — 900 / 916 city, 272 / 291 resort |
 | H2 | "Non Refund" deposit reduces cancellation rate | **Revised** — Non Refund shows ~99 % cancellation; mechanism to investigate |
-| H3 | High-modification bookings are more likely to cancel | Open — next step: cancellation rate by change count bucket |
+| H3 | High-modification bookings are more likely to cancel | **Partially revised** — observation suggests more changes → less cancellation; to quantify |
 | H4 | High special-request count correlates with high modification count | Open — next step: `nb_of_special_requests` × `nb_of_changes_into_the_booking` |
 | H5 | Negative ADR rows in `resort_hotel` are billing corrections | Open — `WHERE average_daily_rate < 0` investigation |
 | H6 | Zero ADR rows represent complimentary stays or data errors | Open — `WHERE average_daily_rate = 0` investigation |
-| H7 | Non Refund classification may be retroactive (post-cancellation) rather than predictive | New — requires checking `reservation_status_date` vs `arrival_date` |
-| H8 | City hotel cancellation rate higher than resort due to business-travel flexibility | New — cross-tab `hotel × market_segment × is_canceled` |
+| H7 | Non Refund classification may be retroactive (post-cancellation) rather than predictive | Open — requires checking `reservation_status_date` vs `arrival_date` |
+| H8 | City hotel cancellation rate higher than resort due to business-travel flexibility | Open — cross-tab `hotel × market_segment × is_canceled` |
+| H9 | Guests with more previous non-cancellations are less likely to cancel current booking | **Observed** — pattern visible in data; to quantify with cancellation rate by `nb_of_booking_not_cancelled` bucket |
+| H10 | Longer lead time increases cancellation probability | **Observed** — visual pattern confirmed; to quantify with `lead_time_segment × is_canceled` |
 
 ---
 
