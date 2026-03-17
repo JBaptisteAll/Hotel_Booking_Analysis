@@ -28,42 +28,43 @@ SELECT
     SUM(CASE WHEN nb_of_special_requests       IS NULL THEN 1 ELSE 0 END) AS request_nulls,
     SUM(CASE WHEN reservation_status       IS NULL THEN 1 ELSE 0 END) AS status_nulls,
     SUM(CASE WHEN reservation_status_date       IS NULL THEN 1 ELSE 0 END) AS status_date_nulls
-FROM city_hotel;
+FROM resort_hotel;
 
 /*
 À voir peut-être pour créer une table avec seulement les réservations qui ont pas de travel agent
-cie_nulls 75641
-travel_agent_nulls 8131
+cie_nulls 36952
+travel_agent_nulls 8209
 
-children_nulls 4
 
-Concernant les children nuls que faire un COALESCE qui reprend la donnée de baby nulle comme ça si
-Je n'ai pas lu il faut des enfants je reprends celles des bébés.
+Concernant les children nuls que faire un COALESCE qui reprend la donnée de baby de la même manière 
+que je l'ai fait sur l'autre table afin d'harmoniser les requêtes.
 
-Et pour les compagnies nues et les travel legent nuls du coup je pense supprimer la colonne compagnie
-Car sur un total de 79000 lignes 75000 lignes de vide c'est conséquent Quant au travel agent à voir
+Et pour les compagnies nulls et les travel agent nulls du coup je pense supprimer la colonne compagnie
+Car sur un total de 40060 lignes 36952 lignes de vide c'est conséquent Quant au travel agent à voir
 */
+SELECT *
+FROM resort_hotel
 
 -- NETTOYAGE
 
 -- suppression de la colonne company_id avec trop de valeur NULL
-ALTER TABLE city_hotel DROP COLUMN company_id;
+ALTER TABLE resort_hotel DROP COLUMN company_id;
 
 -- Renommer la colonne avec une faute de frappe
-EXEC sp_rename 'city_hotel.assigned_romm_type', 'assigned_room_type', 'COLUMN';
+EXEC sp_rename 'resort_hotel.assigned_romm_type', 'assigned_room_type', 'COLUMN';
 
 -- Mise à jour de la colonne children pour remplir les NULLs par les valeurs de la colonne babies
-UPDATE city_hotel SET children = babies WHERE children IS NULL;
+UPDATE resort_hotel SET children = babies WHERE children IS NULL;
 
 -- Vérification
 SELECT *
-FROM city_hotel
+FROM resort_hotel
 WHERE children IS NULL;
 
 
 
 -- Détecter les doublons
-SELECT booking_id, COUNT(*) FROM city_hotel GROUP BY booking_id HAVING COUNT(*) > 1;
+SELECT booking_id, COUNT(*) FROM resort_hotel GROUP BY booking_id HAVING COUNT(*) > 1;
 
 
 --Profil des colonnes numérique
@@ -77,19 +78,18 @@ MIN(average_daily_rate) AS minimum,
 MAX(average_daily_rate) AS maximum,
 ROUND(AVG(average_daily_rate), 2) AS moyenne,
 ROUND(STDEV(average_daily_rate), 2) AS ecart_type
-FROM city_hotel;
+FROM resort_hotel;
 
 SELECT *
-FROM city_hotel
+FROM resort_hotel
 ORDER BY average_daily_rate DESC;
 
 /*
-La réservation avec un montant de 5400 et probablement une faute de frappe
-Étant donné que la valeur maximale juste après est de 510 et que la reservation
-concerné 2 adultes pour 1 nuit.
-De toute façon la réservation à 5400a été annulé, je vais changer 5400 pour 540.
+Pas de faute apparente sur la colonne ADR
+
+Les minimum en négatif creuser cette partie afin de segmenter les ce type de clients que ça peut être 
 */
-UPDATE city_hotel SET average_daily_rate = 540 WHERE average_daily_rate = 5400;
+
 
 -- Changement dans la résa
 SELECT
@@ -100,16 +100,14 @@ MIN(nb_of_changes_into_the_booking) AS minimum,
 MAX(nb_of_changes_into_the_booking) AS maximum,
 ROUND(AVG(nb_of_changes_into_the_booking), 2) AS moyenne,
 ROUND(STDEV(nb_of_changes_into_the_booking), 2) AS ecart_type
-FROM city_hotel;
+FROM resort_hotel;
 
 SELECT *
-FROM city_hotel
+FROM resort_hotel
 ORDER BY nb_of_changes_into_the_booking;
 
 /*
-Un grand nombre de réservations avec beaucoup de changements ils ne sont pas annulés
-Il semble que moins le changements sont effectués sur la réservation et plus
-Il y a de chance pour qu'il annule, cela reste à vérifier.
+Pas de pattern particulier sur le nombre de changements dans la réservation 
 */
 
 -- Annulation
@@ -121,15 +119,14 @@ MIN(nb_of_booking_not_cancelled) AS minimum,
 MAX(nb_of_booking_not_cancelled) AS maximum,
 ROUND(AVG(nb_of_booking_not_cancelled), 2) AS moyenne,
 ROUND(STDEV(nb_of_booking_not_cancelled), 2) AS ecart_type
-FROM city_hotel;
+FROM resort_hotel;
 
 SELECT *
-FROM city_hotel
-ORDER BY nb_of_booking_not_cancelled;
+FROM resort_hotel
+ORDER BY nb_of_booking_not_cancelled DESC;
 
 /*
-Également on retrouve un pattern 2 plus le client NA PAS annuler précédemment
-Alors il y a moins de chances pour cette réservation soit annulée
+Pas de pattern particulier sur le nombre de changements dans la réservation 
 */
 
 SELECT
@@ -140,18 +137,22 @@ MIN(nb_of_booking_cancelled) AS minimum,
 MAX(nb_of_booking_cancelled) AS maximum,
 ROUND(AVG(nb_of_booking_cancelled), 2) AS moyenne,
 ROUND(STDEV(nb_of_booking_cancelled), 2) AS ecart_type
-FROM city_hotel;
+FROM resort_hotel;
 
 SELECT *
-FROM city_hotel
+FROM resort_hotel
 ORDER BY nb_of_booking_cancelled DESC;
 
 /*
+Il semble que certains agents de voyage réservent plusieurs chambres en avance et les annule plus tard 
+probablement des invendus, probablement pertinent de regarder ces Markets segments afin de creuser 
+Un peu plus cette partie et d'adapter ma stratégie et politique d'annulation 
+
 Je vais créer une colonne pour calculer le nombre de réservations au total 
 effectué par les clients, l'idée va être de faire un ratio
 */
 
-ALTER TABLE city_hotel
+ALTER TABLE resort_hotel
 ADD nb_total_of_booking AS (nb_of_booking_cancelled + nb_of_booking_not_cancelled);
 
 SELECT
@@ -162,15 +163,18 @@ MIN(nb_total_of_booking) AS minimum,
 MAX(nb_total_of_booking) AS maximum,
 ROUND(AVG(nb_total_of_booking), 2) AS moyenne,
 ROUND(STDEV(nb_total_of_booking), 2) AS ecart_type
-FROM city_hotel;
+FROM resort_hotel;
 
 SELECT *
-FROM city_hotel
-ORDER BY nb_total_of_booking;
+FROM resort_hotel
+ORDER BY nb_total_of_booking DESC;
 
 /*
-Donc il est possible que les clients qui ont le plus de réservation au total annulez et non annulé
-Annule le moins
+Il semble que les corporates et le moins de réservation non annulée 
+Au contraire les groupes ainsi que les offline TA/TO soit ceux qui annulent le plus de réservation
+
+Je pense donc qu'il est intéressant de regarder cette colonne Market segment et de voir le type de deposit 
+Qu'on leur propose 
 */
 
 
@@ -183,20 +187,7 @@ MIN(babies) AS minimum,
 MAX(babies) AS maximum,
 ROUND(AVG(babies), 2) AS moyenne,
 ROUND(STDEV(babies), 2) AS ecart_type
-FROM city_hotel;
-
-
-SELECT *
-FROM city_hotel
-ORDER BY babies DESC;
-
-/*
-J'ai 1 réservations avec 10 bébés et une autre avec 9 bébés, je pense que la première 
-et probablement un bébé, mais pour la 2e aucune idée; étant donné que 
-je ne peux poser la question je vais changer 10 pour 1 et laisser 9
-*/
-
-UPDATE city_hotel SET babies = 1 WHERE babies = 10;
+FROM resort_hotel;
 
 SELECT
 COUNT(*) AS total_lignes,
@@ -206,7 +197,15 @@ MIN(children) AS minimum,
 MAX(children) AS maximum,
 ROUND(AVG(children), 2) AS moyenne,
 ROUND(STDEV(children), 2) AS ecart_type
-FROM city_hotel;
+FROM resort_hotel;
+
+/*
+Il y a une ligne avec 10 enfants, je suppose que c'est une erreur vu qu'elle est en No-Show 
+je préfère la changer pour un enfant 
+*/
+UPDATE resort_hotel
+SET children = 1 WHERE children = 10;
+
 
 SELECT
 COUNT(*) AS total_lignes,
@@ -216,8 +215,15 @@ MIN(adults) AS minimum,
 MAX(adults) AS maximum,
 ROUND(AVG(adults), 2) AS moyenne,
 ROUND(STDEV(adults), 2) AS ecart_type
-FROM city_hotel;
+FROM resort_hotel;
 
+SELECT *
+FROM resort_hotel
+ORDER BY adults DESC;
+
+/*
+Il y a pas mal de groupes avec beaucoup de personnes mais il semble aussi beaucoup annulé 
+*/
 
 -- Nombre de nuits
 SELECT
@@ -228,10 +234,10 @@ MIN(nb_of_weekend_nights) AS minimum,
 MAX(nb_of_weekend_nights) AS maximum,
 ROUND(AVG(nb_of_weekend_nights), 2) AS moyenne,
 ROUND(STDEV(nb_of_weekend_nights), 2) AS ecart_type
-FROM city_hotel;
+FROM resort_hotel;
 
 SELECT *
-FROM city_hotel
+FROM resort_hotel
 ORDER BY nb_of_weekend_nights DESC;
 
 
@@ -244,20 +250,20 @@ MIN(lead_time_in_days) AS minimum,
 MAX(lead_time_in_days) AS maximum,
 ROUND(AVG(lead_time_in_days), 2) AS moyenne,
 ROUND(STDEV(lead_time_in_days), 2) AS ecart_type
-FROM city_hotel;
+FROM resort_hotel;
 
 SELECT *
-FROM city_hotel
-ORDER BY lead_time_in_days;
+FROM resort_hotel
+ORDER BY lead_time_in_days DESC;
 
 /*
-Il y a énormément d l'annulation avec des raisins qui ont été faites longtemps à l'avance
-Il semble que plus on réserve tôt et plus on a tendance à annuler.
+Encore une fois pas mal de réservations qui ont été annulées lorsqu'elles ont été faites longtemps en avance 
+Mais ça reste des gros blocs d'annulation, donc je pense que pour cette table la le Market segment et le plus important 
 
-Un peut être intéressant de segmenter cette colonne afin de les regrouper.
+segmenter cette colonne afin de les regrouper, afin d'harmoniser les 2 tables
 */
 
-ALTER TABLE city_hotel
+ALTER TABLE resort_hotel
 ADD lead_time_segment AS (
     CASE
         WHEN lead_time_in_days = 0 THEN 'Same Day'
@@ -271,14 +277,15 @@ ADD lead_time_segment AS (
 ) PERSISTED;
 
 
+
 /*
 Ajouter une colonne avec le montant total par résa
 (nb_of_weekend_nights + nb_of_week_nights) * average_daily_rate
 */
-ALTER TABLE city_hotel
+ALTER TABLE resort_hotel
 ADD total_revenue AS (nb_of_weekend_nights + nb_of_week_nights) * average_daily_rate PERSISTED;
 
 
 SELECT *
-FROM city_hotel
-ORDER BY total_revenue ;
+FROM resort_hotel
+ORDER BY total_revenue DESC;

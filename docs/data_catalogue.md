@@ -49,35 +49,39 @@ This document inventories all data assets in the project: their origin, format, 
 
 ---
 
-### `resort_hotel` (typed)
+### `resort_hotel` (typed, cleaned)
 
 | Attribute | Value |
 |---|---|
-| Description | Typed, validated subset of `hotel_bookings` filtered on `hotel = 'Resort Hotel'` |
+| Description | Typed, validated, and cleaned subset of `hotel_bookings` filtered on `hotel = 'Resort Hotel'` |
 | Location | Algarve region, Faro area (Portugal) |
 | Role | Primary analytical table for Resort Hotel analysis |
-| Columns | 30 (32 source columns → 1 date column reconstructed, `booking_id` added) |
-| Rows | ~40 060 |
+| Columns | 32 (30 after load → `company_id` dropped, 3 computed columns added) |
+| Rows | 40 060 |
 | Loaded by | `01_schema_and_load.sql` |
+| Cleaned by | `04_nettoyage_des_données_resort_hotel.sql` |
 | Filter | `WHERE hotel = 'Resort Hotel'` |
 | Transformations | Date reconstruction, `TRY_CAST` on `children` / `agent` / `company`, column renaming, type enforcement |
 | CHECK constraints | `hotel`, `meal`, `distribution_channel`, `deposit_type`, `customer_type`, `reservation_status` |
+| Cleaning decisions | `company_id` dropped (92 % NULLs); `assigned_romm_type` renamed; `children` NULLs filled from `babies`; `children = 10` → `1`; negative ADR kept (billing corrections); 3 computed columns added |
 
 ---
 
-### `city_hotel` (typed)
+### `city_hotel` (typed, cleaned)
 
 | Attribute | Value |
 |---|---|
-| Description | Typed, validated subset of `hotel_bookings` filtered on `hotel = 'City Hotel'` |
+| Description | Typed, validated, and cleaned subset of `hotel_bookings` filtered on `hotel = 'City Hotel'` |
 | Location | Lisbon (Portugal) |
 | Role | Primary analytical table for City Hotel analysis |
-| Columns | 30 |
-| Rows | ~79 330 |
+| Columns | 32 (30 after load → `company_id` dropped, 3 computed columns added) |
+| Rows | 79 330 |
 | Loaded by | `01_schema_and_load.sql` |
+| Cleaned by | `03_nettoyage_des_données_city_hotel.sql` |
 | Filter | `WHERE hotel = 'City Hotel'` |
 | Transformations | Same as `resort_hotel` |
 | CHECK constraints | Same as `resort_hotel` |
+| Cleaning decisions | `company_id` dropped (95 % NULLs); `assigned_romm_type` renamed; `children` NULLs filled from `babies`; `babies = 10` → `1`; `average_daily_rate = 5400` → `540`; 3 computed columns added |
 
 ---
 
@@ -107,7 +111,9 @@ hotel_bookings  (raw SQL Server table — full import)
 | Script | Role | Tables affected |
 |---|---|---|
 | `01_schema_and_load.sql` | Creates `resort_hotel` and `city_hotel`, applies CHECK constraints, inserts data from `hotel_bookings` | `resort_hotel`, `city_hotel` |
-| `eda_preleminaire.sql` | Exploratory Data Analysis — row counts, period, duplicate check, categorical distributions, numeric stats | `city_hotel`, `resort_hotel`, VIEW `all_hotel` |
+| `02_eda_exploratory.sql` | Exploratory Data Analysis — row counts, period, duplicate check, categorical distributions, numeric stats, cross-dimension analysis, hypotheses | `city_hotel`, `resort_hotel`, VIEW `all_hotel` |
+| `03_nettoyage_des_données_city_hotel.sql` | Data cleaning for city_hotel — NULL audit, column drops, typo corrections, outlier fixes, computed columns | `city_hotel` |
+| `04_nettoyage_des_données_resort_hotel.sql` | Data cleaning for resort_hotel — NULL audit, column drops, typo corrections, outlier fixes, computed columns | `resort_hotel` |
 
 ---
 
@@ -122,7 +128,16 @@ hotel_bookings  (raw SQL Server table — full import)
 | `hotel_bookings` | `adr` | Some values are 0 or negative | Not filtered — to be handled at analysis layer |
 | `hotel_bookings` | `adults` | Some rows have `adults = 0` | Not filtered at load — to be handled at analysis layer |
 | `city_hotel` | `booking_id` | Starts at 850 instead of 0 due to a failed INSERT consuming identity values | Cosmetic only — `booking_id` is a surrogate key, not a business identifier |
-| `resort_hotel` | `average_daily_rate` | Minimum value is -6.38 (negative ADR) — likely a billing correction entry | Flagged during EDA — to be investigated and filtered at analysis layer |
+| `city_hotel` | `company_id` | 75 641 NULLs / 79 330 rows (95 %) | **Dropped** — `03_nettoyage_des_données_city_hotel.sql` |
+| `city_hotel` | `assigned_romm_type` | Typo in column name | **Renamed** to `assigned_room_type` — `03_nettoyage_des_données_city_hotel.sql` |
+| `city_hotel` | `children` | 4 NULLs remaining after TRY_CAST | **Filled** from `babies` value — `03_nettoyage_des_données_city_hotel.sql` |
+| `city_hotel` | `babies` | 1 row with `babies = 10` — likely entry error | **Corrected** to `1` — `03_nettoyage_des_données_city_hotel.sql` |
+| `city_hotel` | `average_daily_rate` | 1 row with `5 400` — likely typo (next max = 510, booking canceled) | **Corrected** to `540` — `03_nettoyage_des_données_city_hotel.sql` |
+| `resort_hotel` | `company_id` | 36 952 NULLs / 40 060 rows (92 %) | **Dropped** — `04_nettoyage_des_données_resort_hotel.sql` |
+| `resort_hotel` | `assigned_romm_type` | Typo in column name | **Renamed** to `assigned_room_type` — `04_nettoyage_des_données_resort_hotel.sql` |
+| `resort_hotel` | `children` | 4 NULLs remaining after TRY_CAST | **Filled** from `babies` value — `04_nettoyage_des_données_resort_hotel.sql` |
+| `resort_hotel` | `children` | 1 row with `children = 10` — No-Show row, likely entry error | **Corrected** to `1` — `04_nettoyage_des_données_resort_hotel.sql` |
+| `resort_hotel` | `average_daily_rate` | Minimum value is -6.38 (negative ADR) — likely billing corrections | **Kept** — to be investigated and filtered at analysis layer (H5 open) |
 
 ---
 
