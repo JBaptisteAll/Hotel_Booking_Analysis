@@ -60,8 +60,8 @@ Both tables share the same structure. They are populated from `hotel_bookings` v
 | `nb_of_weekend_nights` | `INT` | Weekend nights in stay | Renamed from `stays_in_weekend_nights` | ≥ 0 |
 | `nb_of_week_nights` | `INT` | Weekday nights in stay | Renamed from `stays_in_week_nights` | ≥ 0 |
 | `adults` | `INT` | Number of adults | Direct copy | ≥ 0 |
-| `children` | `INT` | Number of children | `TRY_CAST(children AS INT)` — `'NA'` → `NULL` | ≥ 0 or NULL |
-| `babies` | `INT` | Number of babies | Direct copy | ≥ 0 |
+| `children` | `INT` | Number of children | `TRY_CAST(children AS INT)` — `'NA'` → `NULL`; 4 NULLs filled from `babies` during cleaning | ≥ 0 |
+| `babies` | `INT` | Number of babies | Direct copy; city_hotel: 1 outlier corrected (`10` → `1`) | ≥ 0 |
 | `meal` | `VARCHAR(10)` | Meal plan | Direct copy | CHECK: `FB`, `HB`, `SC`, `BB`, `Undefined` |
 | `country_of_origin` | `VARCHAR(5)` | Guest origin country (ISO 3166-1 alpha-3) | Renamed from `country` | — |
 | `market_segment` | `VARCHAR(20)` | Booking market segment | Direct copy | — |
@@ -70,20 +70,27 @@ Both tables share the same structure. They are populated from `hotel_bookings` v
 | `nb_of_booking_cancelled` | `INT` | Prior cancellations by this guest | Renamed from `previous_cancellations` | ≥ 0 |
 | `nb_of_booking_not_cancelled` | `INT` | Prior completed stays by this guest | Renamed from `previous_bookings_not_canceled` | ≥ 0 |
 | `reserved_room_type` | `VARCHAR(1)` | Room type requested at booking | Direct copy | `A`–`L` |
-| `assigned_romm_type` | `VARCHAR(1)` | Room type assigned at check-in | Renamed from `assigned_room_type` | `A`–`L` |
+| `assigned_room_type` | `VARCHAR(1)` | Room type assigned at check-in | Renamed from `assigned_room_type` (source) — typo `assigned_romm_type` corrected during cleaning | `A`–`L` |
 | `nb_of_changes_into_the_booking` | `INT` | Number of booking modifications | Renamed from `booking_changes` | ≥ 0 |
 | `deposit_type` | `VARCHAR(10)` | Deposit policy | Direct copy | CHECK: `No Deposit`, `Refundable`, `Non Refund` |
 | `travel_agency_id` | `INT` | Travel agency ID | `TRY_CAST(agent AS INT)` — `NULL` strings → `NULL` | NULL = direct booking |
-| `company_id` | `INT` | Company ID | `TRY_CAST(company AS INT)` — `NULL` strings → `NULL` | NULL = non-corporate booking |
+| ~~`company_id`~~ | ~~`INT`~~ | ~~Company ID~~ | **Dropped during cleaning** — 95 % NULLs on city_hotel, 92 % on resort_hotel | — |
 | `days_in_waiting_list` | `INT` | Days on waiting list before confirmation | Direct copy | ≥ 0 |
 | `customer_type` | `VARCHAR(20)` | Customer/booking type | Direct copy | CHECK: `Group`, `Contract`, `Transient`, `Transient-Party` |
-| `average_daily_rate` | `DECIMAL(18,2)` | Revenue per room per night (EUR) | Renamed + retyped from `adr` (float → DECIMAL) | Can be 0 or negative (corrections) |
+| `average_daily_rate` | `DECIMAL(18,2)` | Revenue per room per night (EUR) | Renamed + retyped from `adr` (float → DECIMAL); city_hotel: `5400` → `540` (typo, canceled booking); resort_hotel: negative values kept (billing corrections) | Can be 0 or negative (resort_hotel only) |
 | `nb_of_carpark_required` | `INT` | Parking spaces requested | Renamed from `required_car_parking_spaces` | ≥ 0 |
 | `nb_of_special_requests` | `INT` | Number of special requests | Renamed from `total_of_special_requests` | `0`–`5` |
 | `reservation_status` | `VARCHAR(15)` | Final reservation status | Direct copy | CHECK: `Check-Out`, `Canceled`, `No-Show` |
 | `reservation_status_date` | `DATETIME` | Date of last status change | Direct copy | — |
 
----
+
+**Computed columns — added during cleaning (both tables):**
+
+| Column | Type | Description | Formula | Notes |
+|---|---|---|---|---|
+| `nb_total_of_booking` | Computed | Total number of bookings by this guest (history) | `nb_of_booking_cancelled + nb_of_booking_not_cancelled` | Not PERSISTED — recalculated on read |
+| `lead_time_segment` | Computed PERSISTED | Lead time bucketed into 7 ordered categories | CASE on `lead_time_in_days` | Same Day / Last Minute (≤5d) / Short (≤15d) / Medium (≤30d) / Long (≤100d) / X Long (≤360d) / XXL |
+| `total_revenue` | Computed PERSISTED | Estimated booking revenue in EUR | `(nb_of_weekend_nights + nb_of_week_nights) * average_daily_rate` | Excludes canceled bookings from revenue analysis if filtered on `is_canceled = 0` |
 
 ---
 
@@ -118,7 +125,7 @@ CREATE VIEW all_hotel AS
 
 ## Room Type Codes
 
-Room types are anonymized letter codes (`A` through `L`). `A` is the most common room type. Comparing `reserved_room_type` vs. `assigned_romm_type` indicates upgrades (assigned > reserved) or downgrades (assigned < reserved).
+Room types are anonymized letter codes (`A` through `L`). `A` is the most common room type. Comparing `reserved_room_type` vs. `assigned_room_type` indicates upgrades (assigned > reserved) or downgrades (assigned < reserved).
 
 ---
 
@@ -134,5 +141,5 @@ Populated during preliminary EDA (`eda_preleminaire.sql`, 2026-03-04). Confirmed
 | `nb_of_changes_into_the_booking` | resort_hotel | 0 | 17 | 0.29 | 0 | 0.73 | Same pattern |
 | `nb_of_special_requests` | city_hotel | 0 | 5 | ~0 | 0 | — | Low overall; potential signal for guest engagement |
 | `nb_of_special_requests` | resort_hotel | 0 | 5 | ~0 | 0 | — | Same pattern |
-| `average_daily_rate` | city_hotel | 0.00 | 5 400.00 | 105.30 | 99.90 | 43.60 | Max of 5 400 is a likely outlier — to investigate |
-| `average_daily_rate` | resort_hotel | **-6.38** | 508.00 | 94.95 | 75.00 | 61.44 | **Negative minimum** — billing correction suspected; to filter at analysis layer |
+| `average_daily_rate` | city_hotel | 0.00 | ~~5 400.00~~ → **540.00** | 105.30 | 99.90 | 43.60 | Outlier corrected during cleaning (5 400 → 540) |
+| `average_daily_rate` | resort_hotel | **-6.38** | 508.00 | 94.95 | 75.00 | 61.44 | **Negative minimum** — billing correction suspected; kept in table, to filter at analysis layer (H5) |

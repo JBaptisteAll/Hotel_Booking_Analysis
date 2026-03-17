@@ -70,6 +70,7 @@ Both hotels are located in **Portugal**:
 ├── 01_schema_and_load.sql                          # DDL (CREATE TABLE, constraints) + ETL (INSERT INTO SELECT)
 ├── 02_eda_exploratory.sql                          # Exploratory Data Analysis — distributions, stats, hypotheses
 ├── 03_nettoyage_des_données_city_hotel.sql         # Data cleaning — city_hotel (NULLs, outliers, computed columns)
+├── 04_nettoyage_des_données_resort_hotel.sql       # Data cleaning — resort_hotel (NULLs, outliers, computed columns)
 │
 └── README.md                                       # Technical documentation (this file)
 ```
@@ -111,16 +112,17 @@ The raw table is split into two validated, typed tables — one per hotel. Both 
 | `nb_of_changes_into_the_booking` | `INT` | `booking_changes` | Number of modifications before arrival |
 | `deposit_type` | `VARCHAR(10)` | `deposit_type` | CHECK: No Deposit, Refundable, Non Refund |
 | `travel_agency_id` | `INT` | `agent` | `TRY_CAST` — source is VARCHAR with NULLs |
-| ~~`company_id`~~ | ~~`INT`~~ | ~~`company`~~ | **Dropped** — 95 % NULLs (75 641 / 79 330) on city_hotel |
+| ~~`company_id`~~ | ~~`INT`~~ | ~~`company`~~ | **Dropped** — 95 % NULLs on city_hotel (75 641 / 79 330), 92 % on resort_hotel (36 952 / 40 060) |
 | `days_in_waiting_list` | `INT` | `days_in_waiting_list` | |
 | `customer_type` | `VARCHAR(20)` | `customer_type` | CHECK constraint enforced |
-| `average_daily_rate` | `DECIMAL(18,2)` | `adr` | Revenue per night in EUR — 1 outlier corrected (5 400 → 540) |
+| `average_daily_rate` | `DECIMAL(18,2)` | `adr` | Revenue per night in EUR — city_hotel: 1 outlier corrected (5 400 → 540); resort_hotel: negative values kept (billing corrections, to filter at analysis layer) |
 | `nb_of_carpark_required` | `INT` | `required_car_parking_spaces` | |
 | `nb_of_special_requests` | `INT` | `total_of_special_requests` | |
 | `reservation_status` | `VARCHAR(15)` | `reservation_status` | CHECK: Check-Out, Canceled, No-Show |
 | `reservation_status_date` | `DATETIME` | `reservation_status_date` | Date of last status change |
 | `nb_total_of_booking` | Computed | `nb_of_booking_cancelled + nb_of_booking_not_cancelled` | Total booking history per guest |
 | `lead_time_segment` | Computed PERSISTED | `lead_time_in_days` | Buckets: Same Day / Last Minute / Short / Medium / Long / X Long / XXL |
+| `total_revenue` | Computed PERSISTED | `(nb_of_weekend_nights + nb_of_week_nights) * average_daily_rate` | Estimated revenue per booking in EUR |
 
 ### 5.3 Key Design Decisions
 
@@ -140,7 +142,7 @@ The raw table is split into two validated, typed tables — one per hotel. Both 
 
 ### 6.2 Revenue & Pricing
 - ADR trends by hotel, room type, customer segment, season.
-- Room upgrade/downgrade rate (`reserved_room_type` vs `assigned_romm_type`).
+- Room upgrade/downgrade rate (`reserved_room_type` vs `assigned_room_type`).
 - Revenue impact of cancellations (no-shows, last-minute cancellations).
 
 ### 6.3 Demand Patterns
@@ -203,6 +205,26 @@ Preliminary EDA (`eda_preleminaire.sql`) confirmed the following facts and gener
 - No-Show events are overwhelmingly concentrated in "No Deposit" bookings, confirming H1.
 - "Refundable" bookings are nearly absent on city_hotel, suggesting business-travel guests accept uncertainty rather than paying a refundable premium.
 - Resort hotel could potentially benefit from revised Non-Refund deposit conditions.
+
+#### Data Cleaning Decisions — resort_hotel (`04_nettoyage_des_données_resort_hotel.sql`)
+
+| Decision | Detail |
+|---|---|
+| `company_id` dropped | 36 952 NULLs / 40 060 rows (92 %) |
+| `assigned_romm_type` renamed | Typo corrected → `assigned_room_type` |
+| `children` NULLs filled | 4 NULLs replaced by `babies` value (harmonization with city_hotel) |
+| `children = 10` corrected to `1` | Single No-Show row — likely data entry error |
+| `average_daily_rate` negatives kept | Likely billing corrections — to be filtered at analysis layer (H5 open) |
+| `nb_total_of_booking` added | Computed: `nb_of_booking_cancelled + nb_of_booking_not_cancelled` |
+| `lead_time_segment` added (PERSISTED) | 7 buckets: Same Day / Last Minute / Short / Medium / Long / X Long / XXL |
+| `total_revenue` added (PERSISTED) | Computed: `(nb_of_weekend_nights + nb_of_week_nights) * average_daily_rate` |
+
+**Emerging patterns (resort_hotel cleaning phase):**
+- Travel agents (Offline TA/TO, Groups) concentrate the highest volumes of previous cancellations — bulk pre-booking and release behaviour suspected.
+- Guests with more prior non-cancellations → less likely to cancel (same pattern as city_hotel).
+- Longer lead time → more likely to cancel (same pattern as city_hotel).
+
+---
 
 #### Hypotheses
 

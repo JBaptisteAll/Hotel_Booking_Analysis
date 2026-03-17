@@ -196,7 +196,7 @@ et probablement un bébé, mais pour la 2e aucune idée; étant donné que
 je ne peux poser la question je vais changer 10 pour 1 et laisser 9
 */
 
-UPDATE city_hotel SET babies = 1 WHERE babies = 10
+UPDATE city_hotel SET babies = 1 WHERE babies = 10;
 
 SELECT
 COUNT(*) AS total_lignes,
@@ -269,3 +269,16 @@ ADD lead_time_segment AS (
         ELSE 'XXL'
     END
 ) PERSISTED;
+
+
+/*
+Ajouter une colonne avec le montant total par résa
+(nb_of_weekend_nights + nb_of_week_nights) * average_daily_rate
+*/
+ALTER TABLE city_hotel
+ADD total_revenue AS (nb_of_weekend_nights + nb_of_week_nights) * average_daily_rate PERSISTED;
+
+
+SELECT *
+FROM city_hotel
+ORDER BY total_revenue ;
