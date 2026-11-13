@@ -1,0 +1,28 @@
+{
+  "id": "p_hotel_eda",
+  "order": 160,
+  "label": "HOTEL_EDA",
+  "kanji": "泊",
+  "year": "2026",
+  "title_fr": "Hotel Booking Analysis",
+  "title_en": "Hotel Booking Analysis",
+  "summary_fr": "Analyse exploratoire en SQL Server de 119 390 réservations de deux hôtels portugais : annulations, prix moyen par nuit et profils de séjour.",
+  "summary_en": "SQL Server exploratory analysis of 119,390 bookings from two Portuguese hotels: cancellations, average daily rate and stay profiles.",
+  "body_fr": "Premier volet du projet Hotel Booking. Le jeu de données : **119 390 réservations** de deux hôtels au Portugal, un resort en Algarve et un hôtel urbain à Lisbonne.\n\nJ'ai chargé le CSV brut dans SQL Server, puis construit deux tables typées et validées, une par hôtel, avec contraintes et colonnes calculées. Le nettoyage est documenté : valeurs manquantes, valeurs aberrantes, dates reconstruites à partir de trois colonnes.\n\nL'analyse porte sur les annulations et leurs facteurs (délai de réservation, type de dépôt, segment, saison) et sur l'évolution du prix moyen par nuit. Le second volet reprend cette logique dans un pipeline dbt orchestré par Airflow.",
+  "body_en": "First part of the Hotel Booking project. The dataset: **119,390 bookings** from two hotels in Portugal, a resort in the Algarve and a city hotel in Lisbon.\n\nI loaded the raw CSV into SQL Server, then built two typed and validated tables, one per hotel, with constraints and computed columns. The cleaning is documented: missing values, outliers, dates rebuilt from three columns.\n\nThe analysis covers cancellations and their drivers (lead time, deposit type, segment, season) and the average daily rate over time. The second part rebuilds this logic in a dbt pipeline orchestrated by Airflow.",
+  "metrics": [
+    {
+      "label": "réservations",
+      "value": "119 390"
+    },
+    {
+      "label": "hôtels",
+      "value": "2"
+    },
+    {
+      "label": "moteur",
+      "value": "SQL Server"
+    }
+  ],
+  "bot_description": "Premier volet du projet Hotel Booking : analyse exploratoire en SQL Server de 119 390 réservations de deux hôtels portugais, avec tables typées, nettoyage documenté et étude des annulations et du prix moyen par nuit."
+}
